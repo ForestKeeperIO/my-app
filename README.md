@@ -58,7 +58,7 @@ Copy `.env.example` to `.env` and configure:
 ```
 my-app/
 ├── contracts/
-│   ├── hello-world.compact    # Smart contract source
+│   ├── health.compact    # Smart contract source
 │   └── managed/               # Compiled artifacts
 ├── src/
 │   ├── deploy.ts             # Deployment script
@@ -84,16 +84,18 @@ my-app/
 
 ## Contract Overview
 
-This project includes a simple "Hello World" contract that:
+This project powers the Private Wellness Tracker, a privacy-first dApp on the Midnight Network. The contract acts as a verifiable registry that allows users to prove healthy behaviors (steps/heart rate) to third parties (insurers) without ever revealing their raw biometric data.
 
-- Stores a message on the blockchain
-- Allows reading the current message
-- Demonstrates basic Midnight functionality
+-Verifies Zero-Knowledge Proofs: Validates client-side proofs asserting that daily goals (e.g., Steps >= 10,000) have been met.
+-Maintains Encrypted State: Stores cumulative activity metrics (activitySum, heartRateSum) on the ledger as encrypted commitments.
+-Manages Rewards: Tracks a public goalCount to unlock insurance reward tiers without exposing the underlying data history.
+
 
 The contract uses:
 
-- **Public ledger state** for the message
-- **Zero-knowledge proofs** for transactions
-- **Privacy-preserving** architecture
+-Private Ledger State: For activitySum and heartRateSum (biometrics are never plain-text).
+-Compact Circuits: Specifically submitProof for state transitions and getStats for dashboard rendering.
+-Witnesses: To handle client-side secret keys and local data validation.
+
 
 Happy coding! 🌙
