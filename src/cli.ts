@@ -18,6 +18,16 @@ import * as Rx from "rxjs";
 import { MidnightProviders } from "./providers/midnight-providers.js";
 import { EnvironmentManager } from "./utils/environment.js";
 
+const getSecretKeyBytes = () => {
+  const hex = (process.env.CONTRACT_SECRET_KEY || process.env.WALLET_SEED || "").replace(/^0x/, "");
+  if (!/^[a-fA-F0-9]{64}$/.test(hex)) {
+    throw new Error(
+      "CONTRACT_SECRET_KEY (or WALLET_SEED fallback) must be a 32-byte hex string"
+    );
+  }
+  return Uint8Array.from(Buffer.from(hex, "hex"));
+};
+
 // Fix WebSocket for Node.js environment
 // @ts-ignore
 globalThis.WebSocket = WebSocket;
@@ -31,7 +41,7 @@ async function main() {
     output: process.stdout,
   });
 
-  console.log("🌙 my-app CLI\n");
+  console.log("🌙 my-app CLI (health)\n");
 
   try {
     // Validate environment
@@ -48,7 +58,7 @@ async function main() {
 
     const networkConfig = EnvironmentManager.getNetworkConfig();
     const contractName =
-      deployment.contractName || process.env.CONTRACT_NAME || "hello-world";
+      deployment.contractName || process.env.CONTRACT_NAME || "health";
     const walletSeed = process.env.WALLET_SEED!;
 
     console.log("Connecting to Midnight network...");
@@ -81,7 +91,10 @@ async function main() {
       "index.cjs"
     );
     const HelloWorldModule = await import(contractModulePath);
-    const contractInstance = new HelloWorldModule.Contract({});
+    const secretKeyBytes = getSecretKeyBytes();
+    const contractInstance = new HelloWorldModule.Contract({
+      secretKey: (context: any) => [context.state, secretKeyBytes],
+    });
 
     // Create wallet provider
     const walletState = await Rx.firstValueFrom(wallet.state());
@@ -123,62 +136,101 @@ async function main() {
     const deployed: any = await findDeployedContract(providers, {
       contractAddress: deployment.contractAddress,
       contract: contractInstance,
-      privateStateId: "helloWorldState",
-      initialPrivateState: {},
     });
 
     console.log("✅ Connected to contract\n");
 
-    // Main menu loop
+    // Main menu loop (health contract)
     let running = true;
     while (running) {
       console.log("--- Menu ---");
-      console.log("1. Store message");
-      console.log("2. Read current message");
-      console.log("3. Exit");
+      console.log("1. Submit proof");
+      console.log("2. Read activity sum");
+      console.log("3. Read heart rate sum");
+      console.log("4. Read goal count");
+      console.log("5. Exit");
 
       const choice = await rl.question("\nYour choice: ");
 
       switch (choice) {
-        case "1":
-          console.log("\nStoring custom message...");
-          const customMessage = await rl.question("Enter your message: ");
+        case "1": {
+          console.log("\nSubmitting proof...");
+          const activityStr = await rl.question("Enter activity value (uint32): ");
+          const heartStr = await rl.question("Enter heart rate value (uint32): ");
           try {
-            const tx = await deployed.callTx.storeMessage(customMessage);
+            const activityValue = BigInt(activityStr);
+            const heartValue = BigInt(heartStr);
+            const tx = await deployed.callTx.submitProof(activityValue, heartValue);
             console.log("✅ Success!");
-            console.log(`Message: "${customMessage}"`);
-            console.log(`Transaction ID: ${tx.public.txId}`);
+            console.log(`Tx ID: ${tx.public.txId}`);
             console.log(`Block height: ${tx.public.blockHeight}\n`);
           } catch (error) {
-            console.error("❌ Failed to store message:", error);
+            console.error("❌ Failed to submit proof:", error);
           }
           break;
+        }
 
-        case "2":
-          console.log("\nReading message from blockchain...");
+        case "2": {
+          console.log("\nReading activity sum...");
           try {
             const state = await providers.publicDataProvider.queryContractState(
               deployment.contractAddress
             );
             if (state) {
               const ledger = HelloWorldModule.ledger(state.data);
-              const message = Buffer.from(ledger.message).toString();
-              console.log(`📋 Current message: "${message}"\n`);
+              console.log(`📋 Activity sum: ${ledger.activitySum}\n`);
             } else {
-              console.log("📋 No message found\n");
+              console.log("📋 No state found\n");
             }
           } catch (error) {
-            console.error("❌ Failed to read message:", error);
+            console.error("❌ Failed to read activity sum:", error);
           }
           break;
+        }
 
-        case "3":
+        case "3": {
+          console.log("\nReading heart rate sum...");
+          try {
+            const state = await providers.publicDataProvider.queryContractState(
+              deployment.contractAddress
+            );
+            if (state) {
+              const ledger = HelloWorldModule.ledger(state.data);
+              console.log(`📋 Heart rate sum: ${ledger.heartRateSum}\n`);
+            } else {
+              console.log("📋 No state found\n");
+            }
+          } catch (error) {
+            console.error("❌ Failed to read heart rate sum:", error);
+          }
+          break;
+        }
+
+        case "4": {
+          console.log("\nReading goal count...");
+          try {
+            const state = await providers.publicDataProvider.queryContractState(
+              deployment.contractAddress
+            );
+            if (state) {
+              const ledger = HelloWorldModule.ledger(state.data);
+              console.log(`📋 Goal count: ${ledger.goalCount}\n`);
+            } else {
+              console.log("📋 No state found\n");
+            }
+          } catch (error) {
+            console.error("❌ Failed to read goal count:", error);
+          }
+          break;
+        }
+
+        case "5":
           running = false;
           console.log("\n👋 Goodbye!");
           break;
 
         default:
-          console.log("❌ Invalid choice. Please enter 1, 2, or 3.\n");
+          console.log("❌ Invalid choice. Please enter 1, 2, 3, 4, or 5.\n");
       }
     }
 

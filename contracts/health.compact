@@ -1,0 +1,52 @@
+pragma language_version 0.18;
+
+import CompactStandardLibrary;
+
+
+export ledger authority: Bytes<32>;
+export ledger activitySum: Uint<32>;
+export ledger heartRateSum: Uint<32>;
+export ledger goalCount: Counter;
+export ledger round: Counter;
+
+
+constructor(sk: Bytes<32>, initActivity: Uint<32>, initHeart: Uint<32>) {
+  authority = disclose(publicKey(sk));
+
+  activitySum = disclose(initActivity);
+  heartRateSum = disclose(initHeart);
+}
+
+
+circuit publicKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([
+    pad(32, "midnight:wellness:pk"),
+    pad(32, "static"),
+    sk
+  ]);
+}
+
+witness secretKey(): Bytes<32>;
+
+
+export circuit submitProof(activityValue: Uint<32>, heartValue: Uint<32>): [] {
+  const sk = secretKey();
+  const pk = publicKey(sk);
+  assert(authority == pk, "Not authorised to submit proof");
+  activitySum = disclose(activityValue);
+  heartRateSum = disclose(heartValue);
+  goalCount.increment(1);
+  round.increment(1);
+}
+
+export circuit getActivitySum(): Uint<32> {
+  return activitySum;
+}
+
+export circuit getHeartRateSum(): Uint<32> {
+  return heartRateSum;
+}
+
+export circuit getGoalCount(): Uint<32> {
+  return goalCount as Uint<32>;
+}

@@ -23,6 +23,16 @@ import chalk from "chalk";
 import { MidnightProviders } from "./providers/midnight-providers.js";
 import { EnvironmentManager } from "./utils/environment.js";
 
+const getSecretKeyBytes = () => {
+  const hex = (process.env.CONTRACT_SECRET_KEY || process.env.WALLET_SEED || "").replace(/^0x/, "");
+  if (!/^[a-fA-F0-9]{64}$/.test(hex)) {
+    throw new Error(
+      "CONTRACT_SECRET_KEY (or WALLET_SEED fallback) must be a 32-byte hex string"
+    );
+  }
+  return Uint8Array.from(Buffer.from(hex, "hex"));
+};
+
 // Fix WebSocket for Node.js environment
 // @ts-ignore
 globalThis.WebSocket = WebSocket;
@@ -59,7 +69,7 @@ async function main() {
     EnvironmentManager.validateEnvironment();
 
     const networkConfig = EnvironmentManager.getNetworkConfig();
-    const contractName = process.env.CONTRACT_NAME || "hello-world";
+    const contractName = process.env.CONTRACT_NAME || "health";
 
     // Check if contract is compiled
     if (!EnvironmentManager.checkContractCompiled(contractName)) {
@@ -132,7 +142,16 @@ async function main() {
     );
 
     const HelloWorldModule = await import(contractModulePath);
-    const contractInstance = new HelloWorldModule.Contract({});
+    const secretKeyBytes = getSecretKeyBytes();
+    const contractInstance = new HelloWorldModule.Contract({
+      secretKey: (context: any) => [context.state, secretKeyBytes],
+    });
+
+    // Prepare constructor args
+    const initActivity =
+      BigInt(process.env.INIT_ACTIVITY ?? "0");
+    const initHeart =
+      BigInt(process.env.INIT_HEART ?? "0");
 
     // Create wallet provider for transactions
     const walletState = await Rx.firstValueFrom(wallet.state());
@@ -175,11 +194,10 @@ async function main() {
     console.log(chalk.blue("🚀 Deploying contract (30-60 seconds)..."));
     console.log();
 
-    const deployed = await deployContract(providers, {
-      contract: contractInstance,
-      privateStateId: "helloWorldState",
-      initialPrivateState: {},
-    });
+    const deployed = await deployContract<any>(providers as any, {
+      contract: contractInstance as any,
+      args: [secretKeyBytes, initActivity, initHeart],
+    } as any);
 
     const contractAddress = deployed.deployTxData.public.contractAddress;
 
